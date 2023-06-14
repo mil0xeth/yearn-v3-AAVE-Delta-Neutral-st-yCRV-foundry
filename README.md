@@ -1,4 +1,4 @@
-# AAVE-Delta-Neutral-st-yCRV Strategy for Yearn V3 (foundry)
+# AAVE-Delta-Neutral-st-yCRV Strategy for yearn V3
 Strategy collateralizes asset on AAVE (V3) and borrows CRV token to deposit into st-yCRV.
 
 This repo uses [Foundry](https://book.getfoundry.sh/) for tests.

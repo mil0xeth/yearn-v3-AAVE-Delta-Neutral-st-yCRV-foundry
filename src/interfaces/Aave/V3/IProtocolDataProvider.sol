@@ -46,6 +46,15 @@ interface IProtocolDataProvider {
         address asset
     ) external view returns (uint256);
 
+    function getReserveCaps(
+        address asset
+    )
+        external
+        view
+        returns (
+            uint256[2] memory
+        );
+
     function getReserveData(
         address asset
     )
