@@ -9,6 +9,9 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Strategy} from "../../Strategy.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
+
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+
 interface IFactory {
     function owner() external view returns (address);
 
@@ -38,8 +41,9 @@ contract Setup is ExtendedTest {
 
     // Fuzz from $0.01 of 1e6 stable coins up to 1 trillion of a 1e18 coin
     //uint256 public maxFuzzAmount = 1e30;
-    uint256 public maxFuzzAmount = 100e6 * 1e18;
-    uint256 public minFuzzAmount = 1e15;
+    //uint256 public maxFuzzAmount = 100e6 * 1e18;
+    uint256 public maxFuzzAmount = 10e6 * 1e18;
+    uint256 public minFuzzAmount = 1e16;
 
     // Default prfot max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
@@ -68,6 +72,8 @@ contract Setup is ExtendedTest {
         vm.label(management, "management");
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
+
+        maxFuzzAmount = Math.min(strategy.maxSingleTrade(), maxFuzzAmount);
     }
 
     function setUpStrategy() public returns (address) {

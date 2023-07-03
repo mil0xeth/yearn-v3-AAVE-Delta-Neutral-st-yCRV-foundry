@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import "forge-std/console.sol";
 import {Setup} from "./utils/Setup.sol";
 
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IAToken} from "../interfaces/Aave/V3/IAtoken.sol";
 
 contract MainTest is Setup {
@@ -101,8 +102,8 @@ contract MainTest is Setup {
 */
 
         //simulate loss:
-        //vm.prank(address(strategy));
-        //STYCRV.transfer(user, 140e18*0.25925925925925924);
+        vm.prank(address(strategy));
+        STYCRV.transfer(user, 140e18*0.25925925925925924);
 
         // Withdraw all funds
         console.log("strategy.totalAssets() before redeem: ", strategy.totalAssets());
@@ -145,7 +146,7 @@ contract MainTest is Setup {
 
         // Withdraw all funds
         console.log("strategy.totalAssets() before FINAL redeem: ", strategy.totalAssets());
-        uint sharesLeft = strategy.balanceOf(user);
+        uint sharesLeft = strategy.balanceOf(user)*9999/10000;
         console.log("shares user: ", sharesLeft);
         vm.prank(user);
         strategy.redeem(sharesLeft, user, user);

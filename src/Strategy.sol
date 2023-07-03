@@ -30,10 +30,10 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     uint256 public LTVtarget = 62e16; //= 54e16;
     uint256 public LTVborrowMore = 60e16; //= 52e16;
     
-    uint256 public LTVborrowLessNowFromLT = 4e16; //-4%
-    uint256 public LTVborrowLessFromLT = 6e16;
-    uint256 public LTVtargetFromLT = 15e16; //-15% from LT --> 77%-15%=62% target LTV
-    uint256 public LTVborrowMoreFromLT = 17e16;
+    uint256 public DiffFromLTborrowLessNow = 4e16; //-4%
+    uint256 public DiffFromLTborrowLess = 6e16;
+    uint256 public DiffFromLTtarget = 15e16; //-15% from LT --> 77%-15%=62% target LTV
+    uint256 public DiffFromLTborrowMore = 17e16;
 
     //yearn
     address public YCRV = 0xFCc5c47bE19d06BF83eB04298b026F81069ff65b;
@@ -61,14 +61,13 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     
     uint256 public maxSingleTrade;
 
-    uint256 public swapSlippageCRVYCRVBPS; 
+    uint256 public swapPriceDepegCRVYCRVBPS; 
     uint256 public swapSlippageAssetCRVBPS;
     uint256 public minLossToSellCollateralBPS;
     uint256 public maxLossBPS; 
     uint256 public maxUtilizationRateBPS;
 
     uint256 public ASSET_UNIT;
-    //uint256 public ASSET_DUST = 100;
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_BPS = 100_00;
 
@@ -82,17 +81,17 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
 
     function initializeStrategy(address _asset) public {
         maxSingleTrade = 1e6 * 1e18;
+        //maxSingleTrade = 100e6 * 1e18;
         // Set slippages:
-        swapSlippageCRVYCRVBPS = 10_00;
-        //swapSlippageAssetCRVBPS = 2_00;
-        swapSlippageAssetCRVBPS = 100_00;
+        swapPriceDepegCRVYCRVBPS = 6_00;
+        swapSlippageAssetCRVBPS = 5_00;
+        //swapSlippageAssetCRVBPS = 100_00;
         minLossToSellCollateralBPS = 15_00;
         maxLossBPS = 3_00;
         maxUtilizationRateBPS = 71_50;
 
         // Set uni swapper values
-        //minAmountToSell = 1e4;
-        minAmountToSell = 1e18;
+        minAmountToSell = 1e4;
         base = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         router = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
         _setUniFees(_asset, base, 500);
@@ -122,24 +121,28 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         (, uint256 maxLTV, uint256 LT, , , , , , , ) = protocolDataProvider.getReserveConfigurationData(_asset);
         maxLTV = maxLTV * 1e14;
         LT = LT * 1e14;
-        LTVborrowLessNow = LT - LTVborrowLessNowFromLT;
-        LTVborrowLess = LT - LTVborrowLessFromLT;
-        LTVtarget = LT - LTVtargetFromLT;
+        LTVborrowLessNow = LT - DiffFromLTborrowLessNow;
+        LTVborrowLess = LT - DiffFromLTborrowLess;
+        LTVtarget = LT - DiffFromLTtarget;
         require(LTVtarget <= maxLTV, "LTVtarget > maxLTV!");
-        LTVborrowMore = LT - LTVborrowMoreFromLT;
+        LTVborrowMore = LT - DiffFromLTborrowMore;
         require(LTVborrowLessNow >= LTVborrowLess && LTVborrowLess >= LTVtarget && LTVtarget >= LTVborrowMore, "LTV order wrong!");
     }
 
-    function setLTV(uint256 _LTVborrowLessNowFromLT, uint256 _LTVborrowLessFromLT, uint256 _LTVtargetFromLT, uint256 _LTVborrowMoreFromLT) external onlyManagement {
+    function setLTV(uint256 _DiffFromLTborrowLessNow, uint256 _DiffFromLTborrowLess, uint256 _DiffFromLTtarget, uint256 _DiffFromLTborrowMore) external onlyManagement {
         (, uint256 maxLTV, uint256 LT, , , , , , , ) = protocolDataProvider.getReserveConfigurationData(asset);
         maxLTV = maxLTV * 1e14;
         LT = LT * 1e14;
-        LTVborrowLessNow = LT - _LTVborrowLessNowFromLT;
-        LTVborrowLess = LT - _LTVborrowLessFromLT;
-        LTVtarget = LT - _LTVtargetFromLT;
+        LTVborrowLessNow = LT - _DiffFromLTborrowLessNow;
+        LTVborrowLess = LT - _DiffFromLTborrowLess;
+        LTVtarget = LT - _DiffFromLTtarget;
         require(LTVtarget <= maxLTV, "LTVtarget > maxLTV");
-        LTVborrowMore = LT - _LTVborrowMoreFromLT;
+        LTVborrowMore = LT - _DiffFromLTborrowMore;
         require(LTVborrowLessNow >= LTVborrowLess && LTVborrowLess >= LTVtarget && LTVtarget >= LTVborrowMore, "LTV order wrong!");
+        DiffFromLTborrowLessNow = _DiffFromLTborrowLessNow;
+        DiffFromLTborrowLess = _DiffFromLTborrowLess;
+        DiffFromLTtarget = _DiffFromLTtarget;
+        DiffFromLTborrowMore = _DiffFromLTborrowMore;
     }
 
     function setUniFees(
@@ -188,10 +191,14 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
      */
     function _freeFunds(uint256 _amount) internal override {
         console.log("_AMOUNT!!!!!!!!!!!!!!!!!!!!!!!: ", _amount);
+        console.log("collateral in asset ", _balanceCollateral());
+        console.log("debt in asset: ", _CRVtoAsset(_balanceDebt()));
+        console.log("investment in asset: ", _STYCRVtoAsset(_balanceSTYCRV()));
+        console.log("_LTV(): ", _STYCRVtoAsset(_balanceSTYCRV()));
         uint256 currentLTV = _LTV();
         uint256 collateralBalance = _balanceCollateral();
         uint256 totalAssets = TokenizedStrategy.totalAssets();
-        require(_amount <= totalAssets, "_amount > totalAssets");
+        require(_amount <= totalAssets, "_amount > totalAssets");   
         uint256 STYCRVbalance = _balanceSTYCRV();
         //NON-Sandwichable approach to sell investment to repay debt:
         uint256 STYCRVtoUninvest = STYCRVbalance * _amount / totalAssets; //calculate STYCRV investment amount to swap to CRV as a share of the asked total assets
@@ -205,36 +212,47 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
             console.log("_balanceCollateral(): ", _balanceCollateral());
         }
         // Calculate final collateralized debt position (CDP) values that we want to achieve to maintain LTV
-        uint256 debtBalanceInAsset = _CRVtoAsset(_balanceDebt());
+        uint256 debtBalanceInAsset = _balanceDebtInAsset();
         console.log("debtBalanceInAsset: ", debtBalanceInAsset);
-        require(_amount <= collateralBalance, "wait for keeper to realize profits"); //extremely unlikely edge case scenario of massive profits, no reports and huge withdrawal: profits need to be realized by keeper to be non-sandwichable
-        require(_amount + debtBalanceInAsset <= collateralBalance, "wait for keeper to report losses"); //edge case scenario of massive unreported losses
+        require(_amount <= collateralBalance, "wait for keeper to realize profits OR redeem less shares"); //extremely unlikely edge case scenario of massive profits, no reports and huge withdrawal: profits need to be realized by keeper to be non-sandwichable
+        require(_amount + debtBalanceInAsset <= collateralBalance, "wait for keeper to report losses OR redeem less shares"); //edge case scenario of massive unreported losses
         uint256 finalCDPvalue = collateralBalance - _amount - debtBalanceInAsset;
+        if (_amount == totalAssets) { //special case of full withdrawal of all assets out of strategy
+            finalCDPvalue = 0;
+        }
         console.log("finalCDPvalue: ", finalCDPvalue);
         uint256 finalCollateral = finalCDPvalue * ASSET_UNIT / (WAD - currentLTV);
         console.log("finalCollateral: ", finalCollateral);
         uint256 finalDebtInAsset = finalCollateral - finalCDPvalue;
         console.log("finalDebtInAsset: ", finalDebtInAsset);
         uint256 collateralToUnlock;
-        // Check if we need to sell collateral to maintain LTV
         console.log("debtBalanceInAsset: ", debtBalanceInAsset);
         console.log("finalDebtInAsset: ", finalDebtInAsset);
+        // Check if we need to sell collateral to pay off debt to maintain LTV
         if (debtBalanceInAsset > finalDebtInAsset){
-            collateralToUnlock = debtBalanceInAsset - finalDebtInAsset;
-            console.log("collateralToUnlock: ", collateralToUnlock);
-            collateralToUnlock = Math.min(collateralBalance, collateralToUnlock);
-            console.log("collateralToUnlock: ", collateralToUnlock);
-            if (collateralToUnlock > 0) {
+            if (finalDebtInAsset == 0) { //total debt repayment scenario
+                collateralToUnlock = _maxUnlockableCollateral(collateralBalance, debtBalanceInAsset); //unlock collateral only ever up to maximum LTV allowed
+                console.log("collateralToUnlock: ", collateralToUnlock);
+                lendingPool.withdraw(asset, collateralToUnlock, address(this));
+                _swapAssetToExactCRV(_balanceDebt());
+            } else { //partial debt repayment scenario
+                collateralToUnlock = debtBalanceInAsset - finalDebtInAsset;
+                console.log("collateralToUnlock: ", collateralToUnlock);
+                collateralToUnlock = Math.min(collateralBalance, collateralToUnlock);
+                console.log("collateralToUnlock: ", collateralToUnlock);
                 console.log("_balanceCollateral(): ", _balanceCollateral());
+                console.log("_CRVbalance: ", _balanceCRV());
                 lendingPool.withdraw(asset, collateralToUnlock, address(this));
                 console.log("_balanceCollateral(): ", _balanceCollateral());
                 _swapAssetToCRV(collateralToUnlock);
-                CRVbalance = _balanceCRV();
-                console.log("CRVbalance: ", CRVbalance);
-                if (CRVbalance > 0) {
-                   lendingPool.repay(CRV, Math.min(_balanceDebt(), CRVbalance), 2, address(this)); //repay CRV debt with STYCRV to retain LTV after withdraw
-                }
             }
+            //pay off debt:
+            CRVbalance = _balanceCRV();
+            if (CRVbalance > 0) {
+                console.log("repay: ", Math.min(_balanceDebt(), CRVbalance));
+                lendingPool.repay(CRV, Math.min(_balanceDebt(), CRVbalance), 2, address(this)); //repay CRV debt with STYCRV to retain LTV after withdraw
+                console.log("debtBalanceInAsset after repay: ", _balanceDebtInAsset());
+            }                        
         }
         // Unlock collateral to pay out redeemed shares
         collateralBalance = _balanceCollateral();
@@ -243,14 +261,29 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         console.log("collateralToUnlock: ", collateralToUnlock);
         if (collateralToUnlock > 0) {
             console.log("_balanceCollateral(): ", _balanceCollateral());
+            console.log("_balanceDebtInAsset: ", _balanceDebtInAsset());
+            debtBalanceInAsset = _balanceDebtInAsset();
+            console.log("_maxUnlockableCollateral: ", _maxUnlockableCollateral(collateralBalance, debtBalanceInAsset));
+            if (debtBalanceInAsset > 0) {
+                require(collateralToUnlock <= _maxUnlockableCollateral(collateralBalance, debtBalanceInAsset), "wait for keeper to adjust LTV OR redeem less shares");
+            }
             lendingPool.withdraw(asset, collateralToUnlock, address(this));
             console.log("_balanceCollateral(): ", _balanceCollateral());
         }
         //LTV check:
-        require(_LTV() < LTVborrowLessNow, "LTV too high!");
-        //require(0==1, "DONE");
+        require(_LTV() < LTVborrowLessNow, "LTV too high after redeem: redeem less shares & wait for keeper to report");
         console.log("_balanceCollateral(): ", _balanceCollateral());
-        console.log("_CRVtoAsset(_balanceDebt()): ", _CRVtoAsset(_balanceDebt()));
+        console.log("_CRVtoAsset(_balanceDebt()): ", _balanceDebtInAsset());
+    }
+
+    function _maxUnlockableCollateral(uint256 _collateralBalance, uint256 _debtBalanceInAsset) internal returns (uint256) {
+        if (_debtBalanceInAsset == 0) {
+            return _collateralBalance;
+        }
+        (, uint256 maxLTV, uint256 LT, , , , , , , ) = protocolDataProvider.getReserveConfigurationData(asset);
+        maxLTV = maxLTV * 1e14;
+        LT = LT * 1e14; //liquidation threshold
+        return _collateralBalance - _debtBalanceInAsset * WAD / (LT - 5e14); //unlock collateral only ever up to LT-2e14 (exactly LT would revert, so we need LT in BPS -2BPS)
     }
 
 /*
@@ -302,15 +335,72 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
 
         // LTV checks:
         uint256 currentLTV = _LTV();
-        (, uint256 maxLTV, , , , , bool borrowingEnabled, , bool isActive, bool isFrozen) = protocolDataProvider.getReserveConfigurationData(asset);
+
+        //check if target LTV is still acceptable or needs to be updated
+        (, uint256 maxLTV, uint256 LT, , , , bool borrowingEnabled, , bool isActive, bool isFrozen) = protocolDataProvider.getReserveConfigurationData(asset);
         maxLTV = maxLTV * 1e14;
-        if (currentLTV > LTVborrowLess) {
+        LT = LT * 1e14;
+        if (LTVtarget != LT - DiffFromLTtarget || LTVtarget > maxLTV) { //LTVtarget should be a distance from liquidation threshold AND below maxLTV
+            require(False, "LTVTARGET ERROR!");
+            LTVborrowLessNow = LT - DiffFromLTborrowLessNow;
+            LTVborrowLess = LT - DiffFromLTborrowLess;
+            LTVtarget = LT - DiffFromLTtarget;
+            LTVborrowMore = LT - DiffFromLTborrowMore;
+        }
+        
+        //check if borrowLess or borrowMore
+        if (currentLTV > LTVtarget) {
             _borrowLess();
         } else if (currentLTV < LTVborrowMore && currentLTV < maxLTV && borrowingEnabled && isActive && !isFrozen) {
             _borrowMore();
         }
         require(_LTV() < LTVborrowLessNow, "LTV too high!");
         _invested = _balanceAsset()  + _balanceCollateral() + _STYCRVtoAsset(_balanceSTYCRV()) - _balanceDebtInAsset();
+    }
+
+    //call: keeper tracks to tend if true
+    function tendTrigger() external view override returns (bool) {
+        //sell collateral?
+        uint256 debtBalanceInCRV = _balanceDebt();
+        uint256 investmentValueInCRV = _STYCRVtoCRV(investmentValueInSTYCRV);
+        if (investmentValueInCRV < debtBalanceInCRV * (MAX_BPS - minLossToSellCollateralBPS) / MAX_BPS ){
+            return true;
+        }
+
+        //LTV checks:
+        uint256 currentLTV = _LTV();
+        (, uint256 maxLTV, , , , , bool borrowingEnabled, , bool isActive, bool isFrozen) = protocolDataProvider.getReserveConfigurationData(asset);
+        maxLTV = maxLTV * 1e14;
+
+        //borrowLess ignoring gas?
+        if (currentLTV > LTVborrowLessNow) {
+            return true;
+        }
+        
+        //is gas acceptable?
+        if (/*gas check*/false) {
+            return false;
+        }
+        
+        //borrowLess considering gas?
+        if (currentLTV > LTVborrowLess) {
+            return true;
+        }
+
+        //borrowMore considering gas? borrowing enabled? borrow rate good? active & not frozen?
+        if (currentLTV < LTVborrowMore && currentLTV < maxLTV && borrowingEnabled && isActive && !isFrozen) {
+            return true;
+        }
+        /*
+        //tend LTV lever up, after gas check
+        if (_get_weth_borrow_rate() <= max_weth_borrow_rate && wsteth_collateral_ > MEANINGFUL_COLLATERAL) {
+            return true;
+        }*/
+        
+        //time since last report?
+        //check here
+
+        return false;
     }
 
     function _realizeProfitsOrCheckAnyLoss() internal {
@@ -328,20 +418,15 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         // Investment loss check --> sell collateral, repay partly debt, increase investment to make up for loss and stay delta neutral
         uint256 investmentValueInCRV = _STYCRVtoCRV(investmentValueInSTYCRV);
         if (investmentValueInCRV < debtBalanceInCRV * (MAX_BPS - minLossToSellCollateralBPS) / MAX_BPS ) {
-            (, uint256 maxLTV, , , , , , , , ) = protocolDataProvider.getReserveConfigurationData(asset);
-            maxLTV = maxLTV * 1e14;
-            uint256 debtBalanceInAsset = _CRVtoAsset(debtBalanceInCRV);
-            console.log("debtBalanceInAsset: ", debtBalanceInAsset);
             uint256 collateralBalance = _balanceCollateral();
             console.log("collateralBalance: ", collateralBalance);
-            uint256 maxCollateralToUnlock = collateralBalance - debtBalanceInAsset * WAD / maxLTV;
-            console.log("maxCollateralToUnlock: ", maxCollateralToUnlock);
+            uint256 debtBalanceInAsset = _CRVtoAsset(debtBalanceInCRV);
+            console.log("debtBalanceInAsset: ", debtBalanceInAsset);
             uint256 investmentValueInAsset = _CRVtoAsset(investmentValueInCRV);
             console.log("investmentValueInAsset: ", investmentValueInAsset);
             uint256 collateralToUnlock = debtBalanceInAsset - investmentValueInAsset;
             console.log("collateralToUnlock: ", collateralToUnlock);
-            collateralToUnlock = Math.min(maxCollateralToUnlock - ASSET_UNIT, collateralToUnlock);
-            collateralToUnlock = Math.min(collateralBalance, collateralToUnlock);
+            collateralToUnlock = Math.min(_maxUnlockableCollateral(collateralBalance, debtBalanceInAsset), collateralToUnlock); //unlock collateral only ever up to maximum LTV allowed
             console.log("collateralToUnlock: ", collateralToUnlock);
             lendingPool.withdraw(asset, collateralToUnlock, address(this)); //withdraw collateral to free asset
             console.log("_balanceAsset(): ", _balanceAsset());
@@ -357,7 +442,10 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
                 lendingPool.borrow(CRV, idealDebtInCRV - debtBalance, 2, 0, address(this)); //borrow CRV
             } else if (debtBalance > idealDebtInCRV) {
                 console.log("repay: ", debtBalance - idealDebtInCRV);
-                lendingPool.repay(CRV, Math.min(_balanceDebt(), debtBalance - idealDebtInCRV), 2, address(this)); //repay debt with part of the CRV
+                uint256 CRVrepayAmount = Math.min(_balanceCRV(), debtBalance - idealDebtInCRV);
+                if (CRVrepayAmount > 0){
+                    lendingPool.repay(CRV, Math.min(_balanceDebt(), CRVrepayAmount), 2, address(this)); //repay debt with part of the CRV
+                }
             }
             uint256 CRVbalance = _balanceCRV(); //check what's left to invest
             console.log("CRVbalance: ", CRVbalance);
@@ -367,7 +455,7 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
                 IVault(STYCRV).deposit(); //deposit all YCRV into STYCRV
             }
             console.log("FINALcollateralBalance: ", _balanceCollateral());
-            console.log("FINALdebtBalanceInAsset: ", _CRVtoAsset(_balanceDebt()));
+            console.log("FINALdebtBalanceInAsset: ", _balanceDebtInAsset());
             console.log("FINALinvetment: ", _STYCRVtoAsset(_balanceSTYCRV()));
             console.log("FINALLTV: ", _LTV());
         }
@@ -438,36 +526,37 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     
     function _uninvestSTYCRVtoCRV(uint256 _STYCRVtoUninvest) internal returns (uint256) {
         _STYCRVtoUninvest = Math.min(_balanceSTYCRV(), _STYCRVtoUninvest); //max uninvest total STYCRV holdings
-        IVault(STYCRV).withdraw(_STYCRVtoUninvest, address(this), maxLossBPS); //uninvest STYCRV to get YCRV
-        return _swapYCRVtoCRV(_balanceYCRV()); //swap YCRV to CRV
+        if (_STYCRVtoUninvest > 0) {
+            IVault(STYCRV).withdraw(_STYCRVtoUninvest, address(this), maxLossBPS); //uninvest STYCRV to get YCRV
+            return _swapYCRVtoCRV(_balanceYCRV()); //swap YCRV to CRV
+        } else {
+            return 0;
+        }
+        
     }
 
-    function _swapAssetToCRV(uint256 _assetAmount) internal {
-        //if (_assetAmount < ASSET_DUST) {return;}
-        _swapFrom(asset, CRV, _assetAmount, _assetToCRV(_assetAmount) * (MAX_BPS - swapSlippageAssetCRVBPS) / MAX_BPS);
+    function _swapAssetToCRV(uint256 _assetAmount) internal returns (uint256 /*_amountOut*/) {
+        if (_assetAmount == 0) {return 0;}
+        return _swapFrom(asset, CRV, _assetAmount, _assetToCRV(_assetAmount) * (MAX_BPS - swapSlippageAssetCRVBPS) / MAX_BPS);
     }
-/*
-    function _swapAssetToCRVamount(uint256 _CRVamount) internal {
-        if (_CRVamount < CRV_DUST) {return;}
-        _swapTo(asset, CRV, _CRVamount, _CRVtoAsset(_CRVamount) * (MAX_BPS + swapSlippageAssetCRVBPS) / MAX_BPS);
+
+    function _swapAssetToExactCRV(uint256 _CRVamount) internal returns (uint256 /*_amountIn*/) {
+        if (_CRVamount < CRV_DUST) {return 0;}
+        return _swapTo(asset, CRV, _CRVamount, _CRVtoAsset(_CRVamount) * (MAX_BPS + swapSlippageAssetCRVBPS) / MAX_BPS);
     }
-*/
-    function _swapCRVtoAsset(uint256 _CRVamount) internal {
-        if (_CRVamount < CRV_DUST) {return;}
-        _swapFrom(CRV, asset, _CRVamount, _CRVamount * (MAX_BPS - swapSlippageAssetCRVBPS) / MAX_BPS);
+
+    function _swapCRVtoAsset(uint256 _CRVamount) internal returns (uint256 /*_amountOut*/) {
+        if (_CRVamount < CRV_DUST) {return 0;}
+        return _swapFrom(CRV, asset, _CRVamount, _CRVtoAsset(_CRVamount) * (MAX_BPS - swapSlippageAssetCRVBPS) / MAX_BPS);
     }
 
     //call: keeper tends
     function _tend(uint256 _totalIdle) internal override {
 
+
     }
 
-    //call: keeper tracks to tend if true
-    function tendTrigger() external view override returns (bool) {
-        //check for selling collateral
-        //if (investmentValueInCRV < debtBalanceInCRV * (MAX_BPS - minLossToSellCollateralBPS) / MAX_BPS ) 
-        return false;
-    }
+
 
     function availableDepositLimit(address /*_owner*/) public view override returns (uint256) {
         return Math.min(maxSingleTrade, _amountUntilCeilingATokenSupply());
@@ -563,11 +652,11 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     }
 
     function _swapCRVtoYCRV(uint256 _CRVamount) internal returns (uint256) {
-        return curve_CRV_YCRV.exchange(0, 1, _CRVamount, _CRVamount * (MAX_BPS - swapSlippageCRVYCRVBPS) / MAX_BPS);
+        return curve_CRV_YCRV.exchange(0, 1, _CRVamount, _CRVamount * (MAX_BPS - swapPriceDepegCRVYCRVBPS) / MAX_BPS);
     }
 
     function _swapYCRVtoCRV(uint256 _YCRVamount) internal returns (uint256) {
-        return curve_CRV_YCRV.exchange(1, 0, _YCRVamount, _YCRVamount * (MAX_BPS - swapSlippageCRVYCRVBPS) / MAX_BPS);
+        return curve_CRV_YCRV.exchange(1, 0, _YCRVamount, _YCRVamount * (MAX_BPS - swapPriceDepegCRVYCRVBPS) / MAX_BPS);
     }
 
     struct CurveCalcParams {
@@ -662,9 +751,9 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     }
 
     // Max slippage in basis points to accept when swapping CRV <-> YCRV:
-    function setSwapSlippageCRVYCRVBPS(uint256 _swapSlippageCRVYCRVBPS) external onlyManagement {
-        require(_swapSlippageCRVYCRVBPS <= MAX_BPS);
-        swapSlippageCRVYCRVBPS = _swapSlippageCRVYCRVBPS;
+    function setSwapPriceDepegCRVYCRVBPS(uint256 _swapPriceDepegCRVYCRVBPS) external onlyManagement {
+        require(_swapPriceDepegCRVYCRVBPS <= MAX_BPS);
+        swapPriceDepegCRVYCRVBPS = _swapPriceDepegCRVYCRVBPS;
     }
 
     // Max slippage in basis points to accept when swapping asset <-> CRV:
