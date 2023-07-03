@@ -41,12 +41,12 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     
     //aave
     IProtocolDataProvider public constant protocolDataProvider = IProtocolDataProvider(0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3);
-    IPool public lendingPool;
-    IRewardsController public rewardsController;
-    IAToken public aToken;
-    IVariableDebtToken public dToken;
-    IAToken public aTokenBorrow;
-    IPriceOracle internal oracle;
+    IPool public immutable lendingPool;
+    IRewardsController public immutable rewardsController;
+    IAToken public immutable aToken;
+    IVariableDebtToken public immutable dToken;
+    IAToken public immutable aTokenBorrow;
+    IPriceOracle internal immutable oracle;
 
     //curve
     ICurve internal constant curve_CRV_YCRV = ICurve(0x453D92C7d4263201C69aACfaf589Ed14202d83a4);
@@ -76,10 +76,6 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
     address internal constant AAVE = 0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9;
 
     constructor(address _asset, string memory _name) BaseTokenizedStrategy(_asset, _name) {
-        initializeStrategy(_asset);
-    }
-
-    function initializeStrategy(address _asset) public {
         maxSingleTrade = 1e6 * 1e18;
         //maxSingleTrade = 100e6 * 1e18;
         // Set slippages:
@@ -97,7 +93,6 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         _setUniFees(_asset, base, 500);
         _setUniFees(CRV, base, 3000);
 
-        require(address(aToken) == address(0), "already initialized");
         lendingPool = IPool(protocolDataProvider.ADDRESSES_PROVIDER().getPool());
         oracle = IPriceOracle(protocolDataProvider.ADDRESSES_PROVIDER().getPriceOracle());
         aToken = IAToken(lendingPool.getReserveData(_asset).aTokenAddress);
@@ -170,7 +165,7 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
      *
      *call: user deposits --> _invest SANDWICHABLE
      */
-    function _invest(uint256 _amount) internal override {
+    function _deployFunds(uint256 _amount) internal override {
         lendingPool.supply(asset, _amount, address(this), 0);
     }
 
@@ -313,13 +308,13 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
      * All applicable assets including loose assets should be accounted
      * for in this function.
      *
-     * @return _invested A trusted and accurate account for the total
+     * @return _totalAssets A trusted and accurate account for the total
      * amount of 'asset' the strategy currently holds.
      *
      *
      * call: keeper harvests & asks for accurate current assets after harvest
      */
-    function _totalInvested() internal override returns (uint256 _invested) {
+    function _harvestAndReport() internal override returns (uint256 _totalAssets) {
         // Claim and sell any STKAAVE rewards to `asset`.
         //_claimAndSellRewards();
 
@@ -341,7 +336,7 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         maxLTV = maxLTV * 1e14;
         LT = LT * 1e14;
         if (LTVtarget != LT - DiffFromLTtarget || LTVtarget > maxLTV) { //LTVtarget should be a distance from liquidation threshold AND below maxLTV
-            require(False, "LTVTARGET ERROR!");
+            require(false, "LTVTARGET ERROR!");
             LTVborrowLessNow = LT - DiffFromLTborrowLessNow;
             LTVborrowLess = LT - DiffFromLTborrowLess;
             LTVtarget = LT - DiffFromLTtarget;
@@ -355,13 +350,14 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
             _borrowMore();
         }
         require(_LTV() < LTVborrowLessNow, "LTV too high!");
-        _invested = _balanceAsset()  + _balanceCollateral() + _STYCRVtoAsset(_balanceSTYCRV()) - _balanceDebtInAsset();
+        _totalAssets = _balanceAsset()  + _balanceCollateral() + _STYCRVtoAsset(_balanceSTYCRV()) - _balanceDebtInAsset();
     }
 
     //call: keeper tracks to tend if true
     function tendTrigger() external view override returns (bool) {
         //sell collateral?
         uint256 debtBalanceInCRV = _balanceDebt();
+        uint256 investmentValueInSTYCRV = _balanceSTYCRV();
         uint256 investmentValueInCRV = _STYCRVtoCRV(investmentValueInSTYCRV);
         if (investmentValueInCRV < debtBalanceInCRV * (MAX_BPS - minLossToSellCollateralBPS) / MAX_BPS ){
             return true;
@@ -780,29 +776,9 @@ contract Strategy is BaseTokenizedStrategy, UniswapV3Swapper {
         maxUtilizationRateBPS = _maxUtilizationRateBPS;
     }
 
-    function emergencyWithdraw(uint256 _amount) external onlyManagement {
+    function _emergencyWithdraw(uint256 _amount) internal override {
         lendingPool.withdraw(asset, _amount, address(this));
     }
-
-    function cloneStrategy(
-        address _asset,
-        string memory _name,
-        address _management,
-        address _performanceFeeRecipient,
-        address _keeper
-    ) external returns (address newStrategy) {
-        // Use the cloning logic held withen the Base library.
-        newStrategy = TokenizedStrategy.clone(
-            _asset,
-            _name,
-            _management,
-            _performanceFeeRecipient,
-            _keeper
-        );
-        // Neeed to cast address to payable since there is a fallback function.
-        Strategy(payable(newStrategy)).initializeStrategy(_asset);
-    }
-
 
 
 

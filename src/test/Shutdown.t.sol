@@ -12,11 +12,13 @@ contract ShutdownTest is Setup {
 
     function testFail_depositAboveMaxSingleTrade() public {
         uint256 _amount = strategy.maxSingleTrade() + 1; //just above maxSingleTrade
+        setPerformanceFeeToZero(address(strategy));
         mintAndDepositIntoStrategy(strategy, user, _amount);
     }
 
     function test_reportWaitAndShutdownCanWithdraw(uint256 _amount) public {
         vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        setPerformanceFeeToZero(address(strategy));
         uint256 expectedMaxLossBPS = 100;
         uint256 profit;
         uint256 loss;
@@ -175,7 +177,7 @@ contract ShutdownTest is Setup {
         uint256 balanceBefore = asset.balanceOf(user);
 
         //tend strategy if tend is necessary:
-        if (strategy.harvestTrigger() == True) {
+        if (strategy.tendTrigger() == true) {
             vm.prank(keeper);
             (profit, loss) = strategy.report();
             assertGe(_amount*expectedMaxLossBPS/100_00, loss);
