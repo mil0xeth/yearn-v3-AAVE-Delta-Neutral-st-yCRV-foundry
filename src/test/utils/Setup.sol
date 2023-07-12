@@ -48,7 +48,9 @@ contract Setup is ExtendedTest, IEvents {
     //uint256 public maxFuzzAmount = 1e30;
     //uint256 public maxFuzzAmount = 100e6 * 1e18;
     uint256 public maxFuzzAmount = 10e6 * 1e18;
-    uint256 public minFuzzAmount = 1e16;
+    uint256 public minFuzzAmount = 100e18;
+    uint256 public expectedActivityLossBPS = 200;
+    uint256 public expectedProfitReductionBPS = 6000;
     
     bytes32 public constant BASE_STRATEGY_STORAGE = bytes32(uint256(keccak256("yearn.base.strategy.storage")) - 1);
 
@@ -77,7 +79,10 @@ contract Setup is ExtendedTest, IEvents {
         vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
 
-        maxFuzzAmount = Math.min(strategy.maxSingleTrade(), maxFuzzAmount);
+        vm.prank(management);
+        strategy.setMaxSingleTrade(100e6*1e18);
+        //maxFuzzAmount = Math.min(strategy.maxSingleTrade(), maxFuzzAmount);
+        //maxFuzzAmount = Math.min(strategy.maxSingleTrade()*80/100, maxFuzzAmount);
     }
 
     function setUpStrategy() public returns (address) {

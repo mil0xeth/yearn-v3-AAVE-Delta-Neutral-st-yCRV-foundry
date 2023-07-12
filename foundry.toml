@@ -10,4 +10,7 @@ remappings = [
     "@periphery/=lib/tokenized-strategy-periphery/src/",
 ]
 
+[fuzz]
+runs = 1000
+
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config

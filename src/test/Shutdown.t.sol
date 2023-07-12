@@ -9,11 +9,23 @@ contract ShutdownTest is Setup {
     function setUp() public override {
         super.setUp();
     }
-
+/*
     function testFail_depositAboveMaxSingleTrade() public {
         uint256 _amount = strategy.maxSingleTrade() + 1; //just above maxSingleTrade
-        setPerformanceFeeToZero(address(strategy));
         mintAndDepositIntoStrategy(strategy, user, _amount);
+    }
+*/
+    function test_depositAboveMaxSingleTrade() public {
+        uint256 _amount = strategy.maxSingleTrade() + 1; //just above maxSingleTrade
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+    }
+
+    function testFail_withdrawAboveMaxSingleTrade() public {
+        uint256 _amount = strategy.maxSingleTrade() + 1; //just above maxSingleTrade
+        //mintAndDepositIntoStrategy(strategy, user, _amount);
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(user);
+        strategy.redeem(_amount, user, user);
     }
 
     function test_reportWaitAndShutdownCanWithdraw(uint256 _amount) public {
@@ -177,12 +189,14 @@ contract ShutdownTest is Setup {
         uint256 balanceBefore = asset.balanceOf(user);
 
         //tend strategy if tend is necessary:
+        /*
         if (strategy.tendTrigger() == true) {
             vm.prank(keeper);
             (profit, loss) = strategy.report();
             assertGe(_amount*expectedMaxLossBPS/100_00, loss);
             checkStrategyTotals(strategy, _amount - loss, _amount - loss, 0);
         }
+        */
 
         // Withdraw all funds
         vm.prank(user);

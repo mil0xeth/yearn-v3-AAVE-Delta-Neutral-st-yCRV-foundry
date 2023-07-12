@@ -44,4 +44,8 @@ interface IStrategyInterface is IStrategy, IUniswapV3Swapper {
     function setMinLossToSellCollateralBPS(uint256 _minLossToSellCollateralBPS) external;
 
     function maxSingleTrade() external view returns (uint256);
+    function setMaxSingleTrade(uint256 _maxSingleTrade) external;
+
+    function performanceFee() external view returns (uint16);
+    function totalSupply() external view returns (uint256);
 }

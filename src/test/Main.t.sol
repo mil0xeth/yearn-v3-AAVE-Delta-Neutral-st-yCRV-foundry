@@ -22,12 +22,12 @@ contract MainTest is Setup {
         // TODO: add additional check on strat params
     }
 
-    function test_operation() public {
+    function test_main() public {
+        setPerformanceFeeToZero(address(strategy));
         //init
         uint256 profit;
         uint256 loss;
         uint256 _amount = 1000e18; //1000 DAI
-        uint256 DEC = 1e18; //asset 1e18 for 18 decimals
         vm.prank(management);
         strategy.setLTV(12e16, 14e16, 23e16, 25e16);
         console.log("asset: ", asset.symbol());
